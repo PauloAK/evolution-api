@@ -85,6 +85,7 @@ import {
   PrivacySettingDto,
   ReadMessageDto,
   SendPresenceDto,
+  UpdateMessageDto,
   WhatsAppNumberDto,
 } from '../dto/chat.dto';
 import {
@@ -367,6 +368,8 @@ export class WAStartupService {
 
     Object.assign(this.localChatwoot, { ...data, sign_delimiter: data.sign_msg ? data.sign_delimiter : null });
 
+    this.clearCacheChatwoot();
+
     this.logger.verbose('Chatwoot set');
   }
 
@@ -399,6 +402,14 @@ export class WAStartupService {
       reopen_conversation: data.reopen_conversation,
       conversation_pending: data.conversation_pending,
     };
+  }
+
+  public clearCacheChatwoot() {
+    this.logger.verbose('Removing cache from chatwoot');
+
+    if (this.localChatwoot.enabled) {
+      this.chatwootService.getCache().deleteAll();
+    }
   }
 
   private async loadSettings() {
@@ -779,6 +790,7 @@ export class WAStartupService {
           amqp.assertExchange(exchangeName, 'topic', {
             durable: true,
             autoDelete: false,
+            assert: true,
           });
 
           const queueName = `${this.instanceName}.${event}`;
@@ -1369,8 +1381,8 @@ export class WAStartupService {
       if (this.localProxy.enabled) {
         this.logger.info('Proxy enabled: ' + this.localProxy.proxy);
 
-        if (this.localProxy.proxy.includes('proxyscrape')) {
-          const response = await axios.get(this.localProxy.proxy);
+        if (this.localProxy.proxy.host.includes('proxyscrape')) {
+          const response = await axios.get(this.localProxy.proxy.host);
           const text = response.data;
           const proxyUrls = text.split('\r\n');
           const rand = Math.floor(Math.random() * Math.floor(proxyUrls.length));
@@ -1379,8 +1391,15 @@ export class WAStartupService {
             agent: new ProxyAgent(proxyUrl as any),
           };
         } else {
+          let proxyUri =
+            this.localProxy.proxy.protocol + '://' + this.localProxy.proxy.host + ':' + this.localProxy.proxy.port;
+
+          if (this.localProxy.proxy.username && this.localProxy.proxy.password) {
+            proxyUri = `${this.localProxy.proxy.username}:${this.localProxy.proxy.password}@${proxyUri}`;
+          }
+
           options = {
-            agent: new ProxyAgent(this.localProxy.proxy as any),
+            agent: new ProxyAgent(proxyUri as any),
           };
         }
       }
@@ -1413,20 +1432,20 @@ export class WAStartupService {
         syncFullHistory: false,
         userDevicesCache: this.userDevicesCache,
         transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 10 },
-        patchMessageBeforeSending: (message) => {
-          const requiresPatch = !!(message.buttonsMessage || message.listMessage || message.templateMessage);
-          if (requiresPatch) {
-            message = {
-              viewOnceMessageV2: {
-                message: {
-                  messageContextInfo: {
-                    deviceListMetadataVersion: 2,
-                    deviceListMetadata: {},
-                  },
-                  ...message,
-                },
-              },
-            };
+        patchMessageBeforeSending(message) {
+          if (
+            message.deviceSentMessage?.message?.listMessage?.listType ===
+            proto.Message.ListMessage.ListType.PRODUCT_LIST
+          ) {
+            message = JSON.parse(JSON.stringify(message));
+
+            message.deviceSentMessage.message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT;
+          }
+
+          if (message.listMessage?.listType == proto.Message.ListMessage.ListType.PRODUCT_LIST) {
+            message = JSON.parse(JSON.stringify(message));
+
+            message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT;
           }
 
           return message;
@@ -1500,20 +1519,20 @@ export class WAStartupService {
         syncFullHistory: false,
         userDevicesCache: this.userDevicesCache,
         transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 10 },
-        patchMessageBeforeSending: (message) => {
-          const requiresPatch = !!(message.buttonsMessage || message.listMessage || message.templateMessage);
-          if (requiresPatch) {
-            message = {
-              viewOnceMessageV2: {
-                message: {
-                  messageContextInfo: {
-                    deviceListMetadataVersion: 2,
-                    deviceListMetadata: {},
-                  },
-                  ...message,
-                },
-              },
-            };
+        patchMessageBeforeSending(message) {
+          if (
+            message.deviceSentMessage?.message?.listMessage?.listType ===
+            proto.Message.ListMessage.ListType.PRODUCT_LIST
+          ) {
+            message = JSON.parse(JSON.stringify(message));
+
+            message.deviceSentMessage.message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT;
+          }
+
+          if (message.listMessage?.listType == proto.Message.ListMessage.ListType.PRODUCT_LIST) {
+            message = JSON.parse(JSON.stringify(message));
+
+            message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT;
           }
 
           return message;
@@ -1751,10 +1770,16 @@ export class WAStartupService {
 
           let messageRaw: MessageRaw;
 
-          if (
-            (this.localWebhook.webhook_base64 === true && received?.message.documentMessage) ||
-            received?.message?.imageMessage
-          ) {
+          const isMedia =
+            received?.message?.imageMessage ||
+            received?.message?.videoMessage ||
+            received?.message?.stickerMessage ||
+            received?.message?.documentMessage ||
+            received?.message?.audioMessage;
+
+          const contentMsg = received.message[getContentType(received.message)] as any;
+
+          if (this.localWebhook.webhook_base64 === true && isMedia) {
             const buffer = await downloadMediaMessage(
               { key: received.key, message: received?.message },
               'buffer',
@@ -1771,6 +1796,7 @@ export class WAStartupService {
                 ...received.message,
                 base64: buffer ? buffer.toString('base64') : undefined,
               },
+              contextInfo: contentMsg?.contextInfo,
               messageType: getContentType(received.message),
               messageTimestamp: received.messageTimestamp as number,
               owner: this.instance.name,
@@ -1781,6 +1807,7 @@ export class WAStartupService {
               key: received.key,
               pushName: received.pushName,
               message: { ...received.message },
+              contextInfo: contentMsg?.contextInfo,
               messageType: getContentType(received.message),
               messageTimestamp: received.messageTimestamp as number,
               owner: this.instance.name,
@@ -1913,7 +1940,8 @@ export class WAStartupService {
           this.logger.verbose('group ignored');
           return;
         }
-        if (key.remoteJid !== 'status@broadcast' && !key?.remoteJid?.match(/(:\d+)/)) {
+        // if (key.remoteJid !== 'status@broadcast' && !key?.remoteJid?.match(/(:\d+)/)) {
+        if (key.remoteJid !== 'status@broadcast') {
           this.logger.verbose('Message update is valid');
 
           let pollUpdates: any;
@@ -2480,10 +2508,13 @@ export class WAStartupService {
         );
       })();
 
+      const contentMsg = messageSent.message[getContentType(messageSent.message)] as any;
+
       const messageRaw: MessageRaw = {
         key: messageSent.key,
         pushName: messageSent.pushName,
         message: { ...messageSent.message },
+        contextInfo: contentMsg?.contextInfo,
         messageType: getContentType(messageSent.message),
         messageTimestamp: messageSent.messageTimestamp as number,
         owner: this.instance.name,
@@ -2854,7 +2885,8 @@ export class WAStartupService {
     this.logger.verbose('Processing audio');
     let tempAudioPath: string;
     let outputAudio: string;
-
+		
+		number = number.replace(/\D/g, "");
     const hash = `${number}-${new Date().getTime()}`;
     this.logger.verbose('Hash to audio name: ' + hash);
 
@@ -3022,7 +3054,7 @@ export class WAStartupService {
           buttonText: data.listMessage?.buttonText,
           footerText: data.listMessage?.footerText,
           sections: data.listMessage.sections,
-          listType: 1,
+          listType: 2,
         },
       },
       data?.options,
@@ -3514,6 +3546,21 @@ export class WAStartupService {
       return { update: 'success' };
     } catch (error) {
       throw new InternalServerErrorException('Error removing profile picture', error.toString());
+    }
+  }
+
+  public async updateMessage(data: UpdateMessageDto) {
+    try {
+      const jid = this.createJid(data.number);
+
+      this.logger.verbose('Updating message');
+      return await this.client.sendMessage(jid, {
+        text: data.text,
+        edit: data.key,
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw new BadRequestException(error.toString());
     }
   }
 

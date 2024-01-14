@@ -30,6 +30,7 @@ export class MessageRaw {
   source_reply_id?: string;
   chatwoot?: ChatwootMessage;
   status?: wa.StatusMessage | any;
+  contextInfo?: any;
 }
 
 const messageSchema = new Schema<MessageRaw>({
