@@ -14,6 +14,7 @@ class ChatwootMessage {
   messageId?: number;
   inboxId?: number;
   conversationId?: number;
+  contactInbox?: { sourceId: string };
 }
 
 export class MessageRaw {
@@ -52,6 +53,7 @@ const messageSchema = new Schema<MessageRaw>({
     messageId: { type: Number },
     inboxId: { type: Number },
     conversationId: { type: Number },
+    contactInbox: { type: Object },
   },
 });
 

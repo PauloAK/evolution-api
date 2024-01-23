@@ -45,7 +45,6 @@ import { getMIMEType } from 'node-mime-types';
 import { release } from 'os';
 import { join } from 'path';
 import P from 'pino';
-import { ProxyAgent } from 'proxy-agent';
 import qrcode, { QRCodeToDataURLOptions } from 'qrcode';
 import qrcodeTerminal from 'qrcode-terminal';
 import sharp from 'sharp';
@@ -73,6 +72,7 @@ import { dbserver } from '../../libs/db.connect';
 import { RedisCache } from '../../libs/redis.client';
 import { getIO } from '../../libs/socket.server';
 import { getSQS, removeQueues as removeQueuesSQS } from '../../libs/sqs.server';
+import { makeProxyAgent } from '../../utils/makeProxyAgent';
 import { useMultiFileAuthStateDb } from '../../utils/use-multi-file-auth-state-db';
 import { useMultiFileAuthStateRedisDb } from '../../utils/use-multi-file-auth-state-redis-db';
 import {
@@ -89,6 +89,7 @@ import {
   WhatsAppNumberDto,
 } from '../dto/chat.dto';
 import {
+  AcceptGroupInvite,
   CreateGroupDto,
   GetParticipant,
   GroupDescriptionDto,
@@ -131,6 +132,7 @@ import { MessageUpQuery } from '../repository/messageUp.repository';
 import { RepositoryBroker } from '../repository/repository.manager';
 import { Events, MessageSubtype, TypeMediaMessage, wa } from '../types/wa.types';
 import { waMonitor } from '../whatsapp.module';
+import { CacheService } from './cache.service';
 import { ChamaaiService } from './chamaai.service';
 import { ChatwootService } from './chatwoot.service';
 import { TypebotService } from './typebot.service';
@@ -143,6 +145,7 @@ export class WAStartupService {
     private readonly eventEmitter: EventEmitter2,
     private readonly repository: RepositoryBroker,
     private readonly cache: RedisCache,
+    private readonly chatwootCache: CacheService,
   ) {
     this.logger.verbose('WAStartupService initialized');
     this.cleanStore();
@@ -170,7 +173,7 @@ export class WAStartupService {
 
   private phoneNumber: string;
 
-  private chatwootService = new ChatwootService(waMonitor, this.configService, this.repository);
+  private chatwootService = new ChatwootService(waMonitor, this.configService, this.repository, this.chatwootCache);
 
   private typebotService = new TypebotService(waMonitor, this.configService, this.eventEmitter);
 
@@ -408,7 +411,7 @@ export class WAStartupService {
     this.logger.verbose('Removing cache from chatwoot');
 
     if (this.localChatwoot.enabled) {
-      this.chatwootService.getCache().deleteAll();
+      this.chatwootService.getCache()?.deleteAll(this.instanceName);
     }
   }
 
@@ -1382,24 +1385,21 @@ export class WAStartupService {
         this.logger.info('Proxy enabled: ' + this.localProxy.proxy);
 
         if (this.localProxy.proxy.host.includes('proxyscrape')) {
-          const response = await axios.get(this.localProxy.proxy.host);
-          const text = response.data;
-          const proxyUrls = text.split('\r\n');
-          const rand = Math.floor(Math.random() * Math.floor(proxyUrls.length));
-          const proxyUrl = 'http://' + proxyUrls[rand];
-          options = {
-            agent: new ProxyAgent(proxyUrl as any),
-          };
-        } else {
-          let proxyUri =
-            this.localProxy.proxy.protocol + '://' + this.localProxy.proxy.host + ':' + this.localProxy.proxy.port;
-
-          if (this.localProxy.proxy.username && this.localProxy.proxy.password) {
-            proxyUri = `${this.localProxy.proxy.username}:${this.localProxy.proxy.password}@${proxyUri}`;
+          try {
+            const response = await axios.get(this.localProxy.proxy.host);
+            const text = response.data;
+            const proxyUrls = text.split('\r\n');
+            const rand = Math.floor(Math.random() * Math.floor(proxyUrls.length));
+            const proxyUrl = 'http://' + proxyUrls[rand];
+            options = {
+              agent: makeProxyAgent(proxyUrl),
+            };
+          } catch (error) {
+            this.localProxy.enabled = false;
           }
-
+        } else {
           options = {
-            agent: new ProxyAgent(proxyUri as any),
+            agent: makeProxyAgent(this.localProxy.proxy),
           };
         }
       }
@@ -1486,8 +1486,8 @@ export class WAStartupService {
       if (this.localProxy.enabled) {
         this.logger.verbose('Proxy enabled');
         options = {
-          agent: new ProxyAgent(this.localProxy.proxy as any),
-          fetchAgent: new ProxyAgent(this.localProxy.proxy as any),
+          agent: makeProxyAgent(this.localProxy.proxy),
+          fetchAgent: makeProxyAgent(this.localProxy.proxy),
         };
       }
 
@@ -1940,6 +1940,13 @@ export class WAStartupService {
           this.logger.verbose('group ignored');
           return;
         }
+
+        if (status[update.status] === 'READ' && key.fromMe) {
+          if (this.localChatwoot.enabled) {
+            this.chatwootService.eventWhatsapp('messages.read', { instanceName: this.instance.name }, { key: key });
+          }
+        }
+
         // if (key.remoteJid !== 'status@broadcast' && !key?.remoteJid?.match(/(:\d+)/)) {
         if (key.remoteJid !== 'status@broadcast') {
           this.logger.verbose('Message update is valid');
@@ -2458,21 +2465,6 @@ export class WAStartupService {
               option as unknown as MiscMessageGenerationOptions,
             );
           }
-
-          if (!message['audio']) {
-            this.logger.verbose('Sending message');
-            return await this.client.sendMessage(
-              sender,
-              {
-                forward: {
-                  key: { remoteJid: this.instance.wuid, fromMe: true },
-                  message,
-                },
-                mentions,
-              },
-              option as unknown as MiscMessageGenerationOptions,
-            );
-          }
         }
         if (message['conversation']) {
           this.logger.verbose('Sending message');
@@ -2483,6 +2475,21 @@ export class WAStartupService {
               mentions,
               linkPreview: linkPreview,
             } as unknown as AnyMessageContent,
+            option as unknown as MiscMessageGenerationOptions,
+          );
+        }
+
+        if (!message['audio'] && !message['poll'] && sender != 'status@broadcast') {
+          this.logger.verbose('Sending message');
+          return await this.client.sendMessage(
+            sender,
+            {
+              forward: {
+                key: { remoteJid: this.instance.wuid, fromMe: true },
+                message,
+              },
+              mentions,
+            },
             option as unknown as MiscMessageGenerationOptions,
           );
         }
@@ -2885,8 +2892,8 @@ export class WAStartupService {
     this.logger.verbose('Processing audio');
     let tempAudioPath: string;
     let outputAudio: string;
-		
-		number = number.replace(/\D/g, "");
+
+    number = number.replace(/\D/g, '');
     const hash = `${number}-${new Date().getTime()}`;
     this.logger.verbose('Hash to audio name: ' + hash);
 
@@ -3138,7 +3145,9 @@ export class WAStartupService {
 
         if (!group) throw new BadRequestException('Group not found');
 
-        onWhatsapp.push(new OnWhatsAppDto(group.id, !!group?.id, group?.subject));
+        onWhatsapp.push(new OnWhatsAppDto(group.id, !!group?.id, number, group?.subject));
+      } else if (jid === 'status@broadcast') {
+        onWhatsapp.push(new OnWhatsAppDto(jid, false, number));
       } else {
         jid = !jid.startsWith('+') ? `+${jid}` : jid;
         const verify = await this.client.onWhatsApp(jid);
@@ -3146,9 +3155,9 @@ export class WAStartupService {
         const result = verify[0];
 
         if (!result) {
-          onWhatsapp.push(new OnWhatsAppDto(jid, false));
+          onWhatsapp.push(new OnWhatsAppDto(jid, false, number));
         } else {
-          onWhatsapp.push(new OnWhatsAppDto(result.jid, result.exists));
+          onWhatsapp.push(new OnWhatsAppDto(result.jid, result.exists, number));
         }
       }
     }
@@ -3740,6 +3749,16 @@ export class WAStartupService {
       return { send: true, inviteUrl };
     } catch (error) {
       throw new NotFoundException('No send invite');
+    }
+  }
+
+  public async acceptInviteCode(id: AcceptGroupInvite) {
+    this.logger.verbose('Joining the group by invitation code: ' + id.inviteCode);
+    try {
+      const groupJid = await this.client.groupAcceptInvite(id.inviteCode);
+      return { accepted: true, groupJid: groupJid };
+    } catch (error) {
+      throw new NotFoundException('Accept invite error', error.toString());
     }
   }
 
