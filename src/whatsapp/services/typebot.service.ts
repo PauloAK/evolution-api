@@ -274,7 +274,7 @@ export class TypebotService {
     const types = {
       conversation: msg.conversation,
       extendedTextMessage: msg.extendedTextMessage?.text,
-      responseRowId: msg.listResponseMessage.singleSelectReply?.selectedRowId,
+      responseRowId: msg.listResponseMessage?.singleSelectReply?.selectedRowId,
     };
 
     this.logger.verbose('type message: ' + types);
@@ -413,7 +413,13 @@ export class TypebotService {
         text += element.text;
       }
 
-      if (element.children && (element.type === 'p' || element.type === 'a' || element.type === 'inline-variable' || element.type === 'variable')) {
+      if (
+        element.children &&
+        (element.type === 'p' ||
+          element.type === 'a' ||
+          element.type === 'inline-variable' ||
+          element.type === 'variable')
+      ) {
         for (const child of element.children) {
           text += applyFormatting(child);
         }
@@ -444,8 +450,6 @@ export class TypebotService {
 
     async function processMessages(instance, messages, input, clientSideActions, eventEmitter, applyFormatting) {
       for (const message of messages) {
-        const wait = findItemAndGetSecondsToWait(clientSideActions, message.id);
-
         if (message.type === 'text') {
           let formattedText = '';
 
@@ -461,7 +465,7 @@ export class TypebotService {
           await instance.textMessage({
             number: remoteJid.split('@')[0],
             options: {
-              delay: wait ? wait * 1000 : instance.localTypebot.delay_message || 1000,
+              delay: instance.localTypebot.delay_message || 1000,
               presence: 'composing',
             },
             textMessage: {
@@ -474,7 +478,7 @@ export class TypebotService {
           await instance.mediaMessage({
             number: remoteJid.split('@')[0],
             options: {
-              delay: wait ? wait * 1000 : instance.localTypebot.delay_message || 1000,
+              delay: instance.localTypebot.delay_message || 1000,
               presence: 'composing',
             },
             mediaMessage: {
@@ -488,7 +492,7 @@ export class TypebotService {
           await instance.mediaMessage({
             number: remoteJid.split('@')[0],
             options: {
-              delay: wait ? wait * 1000 : instance.localTypebot.delay_message || 1000,
+              delay: instance.localTypebot.delay_message || 1000,
               presence: 'composing',
             },
             mediaMessage: {
@@ -502,7 +506,7 @@ export class TypebotService {
           await instance.audioWhatsapp({
             number: remoteJid.split('@')[0],
             options: {
-              delay: wait ? wait * 1000 : instance.localTypebot.delay_message || 1000,
+              delay: instance.localTypebot.delay_message || 1000,
               presence: 'recording',
               encoding: true,
             },
@@ -510,6 +514,12 @@ export class TypebotService {
               audio: message.content.url,
             },
           });
+        }
+
+        const wait = findItemAndGetSecondsToWait(clientSideActions, message.id);
+
+        if (wait) {
+          await new Promise((resolve) => setTimeout(resolve, wait * 1000));
         }
       }
 
@@ -528,7 +538,7 @@ export class TypebotService {
           await instance.textMessage({
             number: remoteJid.split('@')[0],
             options: {
-              delay: 1200,
+              delay: instance.localTypebot.delay_message || 1000,
               presence: 'composing',
             },
             textMessage: {
@@ -701,7 +711,7 @@ export class TypebotService {
           }
 
           if (keyword_finish && content.toLowerCase() === keyword_finish.toLowerCase()) {
-            sessions.splice(sessions.indexOf(session), 1);
+            const newSessions = await this.clearSessions(instance, remoteJid);
 
             const typebotData = {
               enabled: findTypebot.enabled,
@@ -712,7 +722,7 @@ export class TypebotService {
               delay_message: delay_message,
               unknown_message: unknown_message,
               listening_from_me: listening_from_me,
-              sessions,
+              sessions: newSessions,
             };
 
             this.create(instance, typebotData);
@@ -793,7 +803,7 @@ export class TypebotService {
       }
 
       if (keyword_finish && content.toLowerCase() === keyword_finish.toLowerCase()) {
-        sessions.splice(sessions.indexOf(session), 1);
+        const newSessions = await this.clearSessions(instance, remoteJid);
 
         const typebotData = {
           enabled: findTypebot.enabled,
@@ -804,7 +814,7 @@ export class TypebotService {
           delay_message: delay_message,
           unknown_message: unknown_message,
           listening_from_me: listening_from_me,
-          sessions,
+          sessions: newSessions,
         };
 
         this.create(instance, typebotData);

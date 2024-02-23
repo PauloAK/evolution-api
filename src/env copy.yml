@@ -9,13 +9,14 @@ SERVER:
   TYPE: http # https
   PORT: 8080 # 443
   URL: localhost
-  DISABLE_MANAGER: false
-  DISABLE_DOCS: false
+  DISABLE_MANAGER: true
+  DISABLE_DOCS: true
+
 
 CORS:
   ORIGIN:
-    - "*"
-    # - yourdomain.com
+    # - "*"
+    - robotizap.com
   METHODS:
     - POST
     - GET
@@ -46,7 +47,7 @@ LOG:
 # Determine how long the instance should be deleted from memory in case of no connection.
 # Default time: 5 minutes
 # If you don't even want an expiration, enter the value false
-DEL_INSTANCE: false # or false
+DEL_INSTANCE: true # or false
 
 # Temporary data storage
 STORE:
@@ -64,49 +65,43 @@ CLEAN_STORE:
 
 # Permanent data storage
 DATABASE:
-  ENABLED: false
+  ENABLED: true
   CONNECTION:
-    URI: "mongodb://root:root@localhost:27017/?authSource=admin&readPreference=primary&ssl=false&directConnection=true"
-    DB_PREFIX_NAME: evolution
+    URI: "mongodb://127.0.0.1:27017/?authSource=admin&readPreference=primary&ssl=false&directConnection=true"
+    DB_PREFIX_NAME: "evolution"
   # Choose the data you want to save in the application's database or store
   SAVE_DATA:
-    INSTANCE: false
-    NEW_MESSAGE: false
-    MESSAGE_UPDATE: false
-    CONTACTS: false
-    CHATS: false
+    INSTANCE: true
+    NEW_MESSAGE: true
+    MESSAGE_UPDATE: true
+    CONTACTS: true
+    CHATS: true
 
 REDIS:
-  ENABLED: false
+  ENABLED: true
   URI: "redis://localhost:6379"
   PREFIX_KEY: "evolution"
 
 RABBITMQ:
-  ENABLED: false
-  URI: "amqp://guest:guest@localhost:5672"
+  ENABLED: true
+  URI: "amqp://root:n8XZ6JcRsD@localhost:5672"
 
 SQS:
-  ENABLED: true
+  ENABLED: false
   ACCESS_KEY_ID: ""
   SECRET_ACCESS_KEY: ""
   ACCOUNT_ID: ""
   REGION: "us-east-1"
 
 WEBSOCKET:
-  ENABLED: false
-
-WA_BUSINESS:
-  TOKEN_WEBHOOK: evolution
-  URL: https://graph.facebook.com
-  VERSION: v18.0
-  LANGUAGE: pt_BR
+  ENABLED: true
 
 # Global Webhook Settings
 # Each instance's Webhook URL and events will be requested at the time it is created
 WEBHOOK:
   # Define a global webhook that will listen for enabled events from all instances
   GLOBAL:
-    URL: <url>
+    URL: ""
     ENABLED: false
     # With this option activated, you work with a url per webhook event, respecting the global url and the name of each event
     WEBHOOK_BY_EVENTS: false
@@ -123,18 +118,16 @@ WEBHOOK:
     CONTACTS_SET: true
     CONTACTS_UPSERT: true
     CONTACTS_UPDATE: true
-    PRESENCE_UPDATE: true
+    PRESENCE_UPDATE: false
     CHATS_SET: true
     CHATS_UPSERT: true
     CHATS_UPDATE: true
     CHATS_DELETE: true
-    GROUPS_UPSERT: true
-    GROUP_UPDATE: true
-    GROUP_PARTICIPANTS_UPDATE: true
+    GROUPS_UPSERT: false
+    GROUP_UPDATE: false
+    GROUP_PARTICIPANTS_UPDATE: false
     CONNECTION_UPDATE: true
-    LABELS_EDIT: true
-    LABELS_ASSOCIATION: true
-    CALL: true
+    CALL: false
     # This event fires every time a new token is requested via the refresh route
     NEW_JWT_TOKEN: false
     # This events is used with Typebot
@@ -148,38 +141,17 @@ WEBHOOK:
 
 CONFIG_SESSION_PHONE:
   # Name that will be displayed on smartphone connection
-  CLIENT: "Evolution API"
+  CLIENT: "Google Chrome (Linux)"
   NAME: Chrome # Chrome | Firefox | Edge | Opera | Safari
 
 # Set qrcode display limit
 QRCODE:
-  LIMIT: 30
-  COLOR: "#198754"
+  LIMIT: 20
+  COLOR: "#000"
 
 TYPEBOT:
-  API_VERSION: "old" # old | latest
+  API_VERSION: 'old' # old | latest
   KEEP_OPEN: false
-
-CHATWOOT:
-  # If you leave this option as false, when deleting the message for everyone on WhatsApp, it will not be deleted on Chatwoot.
-  MESSAGE_DELETE: true # false | true
-  IMPORT:
-    # This db connection is used to import messages from whatsapp to chatwoot database
-    DATABASE:
-      CONNECTION:
-        URI: "postgres://user:password@hostname:port/dbname"
-    PLACEHOLDER_MEDIA_MESSAGE: true
-
-# Cache to optimize application performance
-CACHE:
-  REDIS:
-    ENABLED: false
-    URI: "redis://localhost:6379"
-    PREFIX_KEY: "evolution-cache"
-    TTL: 604800
-  LOCAL:
-    ENABLED: false
-    TTL: 86400
 
 # Defines an authentication type for the api
 # We recommend using the apikey because it will allow you to use a custom token,
@@ -189,12 +161,10 @@ AUTHENTICATION:
   # Define a global apikey to access all instances
   API_KEY:
     # OBS: This key must be inserted in the request header to create an instance.
-    KEY: B6D711FCDE4D4FD5936544120E713976
+    KEY: vry7PGdNUop3GADfi16UnsBH0HCphnjy
   # Expose the api key on return from fetch instances
   EXPOSE_IN_FETCH_INSTANCES: true
   # Set the secret key to encrypt and decrypt your token and its expiration time.
   JWT:
     EXPIRIN_IN: 0 # seconds - 3600s === 1h | zero (0) - never expires
     SECRET: L=0YWt]b2w[WF>#>:&E`
-
-LANGUAGE: "pt-BR" # pt-BR, en
