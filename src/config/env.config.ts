@@ -71,6 +71,8 @@ export type Redis = {
 
 export type Rabbitmq = {
   ENABLED: boolean;
+  MODE: string; // global, single, isolated
+  EXCHANGE_NAME: string; // available for global and single, isolated mode will use instance name as exchange
   URI: string;
 };
 
@@ -84,6 +86,7 @@ export type Sqs = {
 
 export type Websocket = {
   ENABLED: boolean;
+  GLOBAL_EVENTS: boolean;
 };
 
 export type WaBusiness = {
@@ -162,6 +165,7 @@ export type QrCode = { LIMIT: number; COLOR: string };
 export type Typebot = { API_VERSION: string; KEEP_OPEN: boolean };
 export type Chatwoot = {
   MESSAGE_DELETE: boolean;
+  MESSAGE_READ: boolean;
   IMPORT: {
     DATABASE: {
       CONNECTION: {
@@ -189,6 +193,7 @@ export interface Env {
   WA_BUSINESS: WaBusiness;
   LOG: Log;
   DEL_INSTANCE: DelInstance;
+  DEL_TEMP_INSTANCES: boolean;
   LANGUAGE: Language;
   WEBHOOK: Webhook;
   CONFIG_SESSION_PHONE: ConfigSessionPhone;
@@ -282,6 +287,8 @@ export class ConfigService {
       },
       RABBITMQ: {
         ENABLED: process.env?.RABBITMQ_ENABLED === 'true',
+        MODE: process.env?.RABBITMQ_MODE || 'isolated',
+        EXCHANGE_NAME: process.env?.RABBITMQ_EXCHANGE_NAME || 'evolution_exchange',
         URI: process.env.RABBITMQ_URI || '',
       },
       SQS: {
@@ -293,6 +300,7 @@ export class ConfigService {
       },
       WEBSOCKET: {
         ENABLED: process.env?.WEBSOCKET_ENABLED === 'true',
+        GLOBAL_EVENTS: process.env?.WEBSOCKET_GLOBAL_EVENTS === 'true',
       },
       WA_BUSINESS: {
         TOKEN_WEBHOOK: process.env.WA_BUSINESS_TOKEN_WEBHOOK || '',
@@ -317,6 +325,9 @@ export class ConfigService {
       DEL_INSTANCE: isBooleanString(process.env?.DEL_INSTANCE)
         ? process.env.DEL_INSTANCE === 'true'
         : Number.parseInt(process.env.DEL_INSTANCE) || false,
+      DEL_TEMP_INSTANCES: isBooleanString(process.env?.DEL_TEMP_INSTANCES)
+        ? process.env.DEL_TEMP_INSTANCES === 'true'
+        : true,
       LANGUAGE: process.env?.LANGUAGE || 'en',
       WEBHOOK: {
         GLOBAL: {
@@ -371,10 +382,11 @@ export class ConfigService {
       },
       CHATWOOT: {
         MESSAGE_DELETE: process.env.CHATWOOT_MESSAGE_DELETE === 'false',
+        MESSAGE_READ: process.env.CHATWOOT_MESSAGE_READ === 'false',
         IMPORT: {
           DATABASE: {
             CONNECTION: {
-              URI: process.env.CHATWOOT_DATABASE_CONNECTION_URI || '',
+              URI: process.env.CHATWOOT_IMPORT_DATABASE_CONNECTION_URI || '',
             },
           },
           PLACEHOLDER_MEDIA_MESSAGE: process.env?.CHATWOOT_IMPORT_PLACEHOLDER_MEDIA_MESSAGE === 'true',

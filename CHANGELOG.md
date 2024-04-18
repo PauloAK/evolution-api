@@ -1,4 +1,32 @@
-# 1.7.0 (develop)
+# 1.7.2 (2024-04-12 17:31)
+
+### Feature
+
+* Mobile connection via sms (test)
+
+### Fixed
+
+* Adjusts in redis
+* Send global event in websocket
+* Adjusts in proxy
+* Fix audio encoding
+* Fix conversation read on chatwoot version 3.7
+* Fix when receiving/sending messages from whatsapp desktop with ephemeral messages enabled
+* Changed returned sessions on typebot status change
+* Reorganization of files and folders
+
+# 1.7.1 (2024-04-03 10:19)
+
+### Fixed
+
+* Correction when sending files with captions on Whatsapp Business
+* Correction in receiving messages with response on WhatsApp Business
+* Correction when sending a reaction to a message on WhatsApp Business
+* Correction of receiving reactions on WhatsApp business
+* Removed mandatory description of rows from sendList
+* Feature to collect message type in typebot
+
+# 1.7.0 (2024-03-11 18:23)
 
 ### Feature
 
@@ -39,6 +67,7 @@
 * Refactor fetching participants for group in WhatsApp service
 * Fixed problem where the typebot final keyword did not work
 * Typebot's wait now pauses the flow and composing is defined by the delay_message parameter in set typebot
+* Composing over 20s now loops until finished
 
 # 1.6.1 (2023-12-22 11:43)
 
